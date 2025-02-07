@@ -1,20 +1,20 @@
 import sys
-import re
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QLineEdit, QToolBar, 
-                           QAction, QProgressBar, QStatusBar, QMessageBox, 
-                           QLabel, QVBoxLayout, QWidget)
+                           QAction, QStatusBar, QMessageBox, QLabel, QVBoxLayout, 
+                           QWidget)
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
-from PyQt5.QtCore import QUrl, pyqtSlot
+from PyQt5.QtCore import QUrl, pyqtSlot, QTimer
 from PyQt5.QtGui import QIcon
-import requests
-from better_profanity import profanity
 from datetime import datetime
-import json
+
+# Import utility modules
+from utils.content_filter import is_safe_url, profanity, blocked_websites, allowed_websites
+from utils.history_manager import load_history, save_history
+from utils.parental_controls import ParentalControlsDialog
 
 class SafeWebPage(QWebEnginePage):
     def acceptNavigationRequest(self, url, _type, isMainFrame):
         if _type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
-            # Check if URL is in allowed list
             if not is_safe_url(url.toString()):
                 QMessageBox.warning(None, "Access Denied", 
                     "This website is not safe for children!")
@@ -28,7 +28,7 @@ class SafeBrowseJunior(QMainWindow):
         self.setGeometry(100, 100, 1024, 768)
         
         # Initialize browsing history
-        self.history = []
+        self.history = load_history()
         
         # Create main layout
         main_widget = QWidget()
@@ -47,10 +47,7 @@ class SafeBrowseJunior(QMainWindow):
         # Add browser to layout
         layout.addWidget(self.browser)
         
-        # Setup content filtering
-        self.setup_content_filtering()
-        
-        # Create status bar with time limit indicator
+        # Setup status bar
         self.setup_status_bar()
         
         # Connect signals
@@ -62,17 +59,17 @@ class SafeBrowseJunior(QMainWindow):
         self.addToolBar(toolbar)
 
         # Add child-friendly navigation buttons with icons
-        back_btn = QAction('←', self)
+        back_btn = QAction(QIcon('resources/icons/back.png'), '←', self)
         back_btn.setToolTip('Go Back')
         back_btn.triggered.connect(self.browser.back)
         toolbar.addAction(back_btn)
 
-        forward_btn = QAction('→', self)
+        forward_btn = QAction(QIcon('resources/icons/forward.png'), '→', self)
         forward_btn.setToolTip('Go Forward')
         forward_btn.triggered.connect(self.browser.forward)
         toolbar.addAction(forward_btn)
 
-        home_btn = QAction('🏠', self)
+        home_btn = QAction(QIcon('resources/icons/home.png'), '🏠', self)
         home_btn.setToolTip('Go Home')
         home_btn.triggered.connect(self.go_home)
         toolbar.addAction(home_btn)
@@ -83,16 +80,11 @@ class SafeBrowseJunior(QMainWindow):
         self.url_bar.returnPressed.connect(self.navigate_to_url)
         toolbar.addWidget(self.url_bar)
 
-    def setup_content_filtering(self):
-        # Load custom profanity filter
-        profanity.load_censor_words()
-        
-        # Add custom blocked words and patterns
-        self.blocked_patterns = [
-            r'\b(drugs?|alcohol|gambling|violence)\b',
-            r'\b(xxx|porn|adult|crime|boobs|melons|whiskers|cannons)\b',
-            # Add more patterns as needed
-        ]
+        # Add Parental Controls Button
+        parental_controls_btn = QAction(QIcon('resources/icons/parental_controls.png'), '👪 Parental Controls', self)
+        parental_controls_btn.setToolTip('Open Parental Controls')
+        parental_controls_btn.triggered.connect(self.open_parental_controls)
+        toolbar.addAction(parental_controls_btn)
 
     def setup_status_bar(self):
         self.status_bar = QStatusBar()
@@ -127,24 +119,8 @@ class SafeBrowseJunior(QMainWindow):
     @pyqtSlot(bool)
     def on_load_finished(self, ok):
         if ok:
-            # Scan page content for inappropriate material
-            self.browser.page().toHtml(self.check_page_content)
-            
             # Log browsing activity
             self.log_activity()
-
-    def check_page_content(self, html_content):
-        # Check for inappropriate content
-        clean_content = profanity.censor(html_content)
-        
-        for pattern in self.blocked_patterns:
-            if re.search(pattern, html_content, re.IGNORECASE):
-                self.browser.setHtml(
-                    "<h1>Content Blocked</h1><p>This page contains inappropriate content.</p>")
-                return
-
-        if clean_content != html_content:
-            self.browser.setHtml(clean_content)
 
     def log_activity(self):
         activity = {
@@ -153,18 +129,15 @@ class SafeBrowseJunior(QMainWindow):
             'title': self.browser.page().title()
         }
         self.history.append(activity)
-        
-        # Save to file (you could also send to a parent's dashboard)
-        with open('browsing_history.json', 'w') as f:
-            json.dump(self.history, f, indent=2)
+        save_history(self.history)
 
     def on_url_changed(self, url):
         self.url_bar.setText(url.toString())
 
-def is_safe_url(url):
-    # Basic URL safety check (expand this with a proper API/database)
-    unsafe_keywords = ['adult', 'xxx', 'porn', 'gambling', 'violence']
-    return not any(keyword in url.lower() for keyword in unsafe_keywords)
+    def open_parental_controls(self):
+        """Open the parental controls dialog."""
+        dialog = ParentalControlsDialog(self.history, self)
+        dialog.exec_()
 
 def main():
     app = QApplication(sys.argv)

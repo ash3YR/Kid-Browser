@@ -90,7 +90,7 @@ class SafeBrowseJunior(QMainWindow):
         # Add custom blocked words and patterns
         self.blocked_patterns = [
             r'\b(drugs?|alcohol|gambling|violence)\b',
-            r'\b(xxx|porn|adult)\b',
+            r'\b(xxx|porn|adult|crime|boobs|melons|whiskers|cannons)\b',
             # Add more patterns as needed
         ]
 
